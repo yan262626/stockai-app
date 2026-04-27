@@ -12,7 +12,7 @@ Nouvelles sources :
 import os, json, time, re, numpy as np, requests
 from datetime import datetime, date, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 try:
@@ -2161,6 +2161,19 @@ def clear_cache():
 
 @app.route("/")
 def index():
+    try:
+        # Servir l'interface web quand on ouvre l'URL racine.
+        return send_from_directory(os.path.dirname(__file__), "index.html")
+    except Exception:
+        pass
+    return jsonify({
+        "message":"Interface introuvable (index.html manquant).",
+        "hint":"Ajoute index.html a la racine du projet.",
+    }), 500
+
+
+@app.route("/api/info")
+def api_info():
     return jsonify({
         "message":"StockAI Pro v5.0 Goldman Sachs Edition",
         "lstm":LSTM_AVAILABLE,"ml":ML_AVAILABLE,
