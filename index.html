@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockAI Pro v5 — Goldman Sachs Edition</title>
+<title>StockAI Pro v5 — Mayan Edition</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -227,7 +227,7 @@ td:first-child{color:var(--text);font-weight:700}
     <div class="logo-icon">&#x1F4C8;</div>
     <div>
       <div class="logo-text">StockAI Pro</div>
-      <div class="logo-sub">v5.0 — Goldman Sachs Edition</div>
+      <div class="logo-sub">v5.0 — Mayan Edition</div>
     </div>
   </div>
   <div class="badges">
@@ -305,7 +305,7 @@ td:first-child{color:var(--text);font-weight:700}
 
   <!-- SCORE GLOBAL -->
   <div class="card">
-    <div class="ct">Score Global Goldman Sachs — 11 Composantes</div>
+    <div class="ct">Score Global Mayan Edition — 11 Composantes</div>
     <div class="global-score-wrap">
       <div class="global-score-ring">
         <svg width="110" height="110" viewBox="0 0 110 110">
@@ -375,9 +375,9 @@ td:first-child{color:var(--text);font-weight:700}
     </div>
   </div>
 
-  <!-- GOLDMAN SACHS SIGNALS — 4 nouveaux modules -->
+  <!-- MAYAN EDITION SIGNALS — 4 nouveaux modules -->
   <div class="card">
-    <div class="ct">Signaux Goldman Sachs — Sources Institutionnelles</div>
+    <div class="ct">Signaux Mayan Edition — Sources Institutionnelles</div>
     <div class="g4" id="gs-signals"></div>
   </div>
 
@@ -438,7 +438,7 @@ td:first-child{color:var(--text);font-weight:700}
 
   <!-- ANALYSE IA -->
   <div class="card">
-    <div class="ct">Analyse IA Masterclass Goldman Sachs — LLaMA 3.3 70B via Groq</div>
+    <div class="ct">Analyse IA Masterclass Mayan Edition — LLaMA 3.3 70B via Groq</div>
     <div class="aib" id="ai"></div>
   </div>
 
@@ -453,7 +453,7 @@ td:first-child{color:var(--text);font-weight:700}
 
 <div class="ov" id="ov">
   <div class="ring"></div>
-  <div class="otx">Analyse Goldman Sachs en cours...</div>
+  <div class="otx">Analyse Mayan Edition en cours...</div>
   <div class="ost">
     <div class="os" id="s1">[ ] Resolution ticker + donnees multi-TF</div>
     <div class="os" id="s2">[ ] Contexte macro (VIX SP500 Or Taux Russell HYG)</div>
@@ -465,7 +465,7 @@ td:first-child{color:var(--text);font-weight:700}
     <div class="os" id="s8">[ ] Reddit + Google Trends + Backtest 90j</div>
     <div class="os" id="s9">[ ] Monte Carlo + XGBoost multi-TF + LSTM</div>
     <div class="os" id="s10">[ ] Ensemble + diversification horizons</div>
-    <div class="os" id="s11">[ ] Analyse IA Goldman Sachs LLaMA</div>
+    <div class="os" id="s11">[ ] Analyse IA Mayan Edition LLaMA</div>
   </div>
 </div>
 
@@ -499,6 +499,27 @@ const fn=(n,d=2)=>n==null||isNaN(n)?"--":Number(n).toLocaleString("fr-FR",{minim
 const fp=n=>n==null||isNaN(n)?"--":(n>=0?"+":"")+fn(n)+"%";
 const qc=q=>q>=75?"var(--green)":q>=50?"var(--gold)":"var(--red)";
 
+async function fetchJsonWithFallback(paths, options){
+  let lastErr = null;
+  for(const p of paths){
+    try{
+      const res = await fetch(`${API}${p}`, options);
+      const raw = await res.text();
+      let data = null;
+      try{
+        data = JSON.parse(raw);
+      }catch(e){
+        throw new Error(`Reponse non JSON sur ${p}`);
+      }
+      if(!res.ok || (data && data.error)) throw new Error((data && data.error) || `Erreur HTTP ${res.status}`);
+      return data;
+    }catch(err){
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("API indisponible");
+}
+
 function scoreColor(s){
   if(s>=70)return "var(--green)";if(s>=55)return "#80c060";
   if(s>=45)return "var(--gold)";if(s>=30)return "var(--orange)";return "var(--red)";
@@ -529,7 +550,7 @@ const SL=["Resolution ticker + donnees multi-TF",
   "Reddit + Google Trends + Backtest 90j",
   "Monte Carlo + XGBoost multi-TF + LSTM",
   "Ensemble + diversification horizons",
-  "Analyse IA Goldman Sachs LLaMA"];
+  "Analyse IA Mayan Edition LLaMA"];
 const SD=[0,500,1000,1800,2800,3800,4800,5800,7000,8500,10000];
 
 async function animS(){
@@ -543,7 +564,7 @@ function rstS(){SL.forEach((l,i)=>{$(`s${i+1}`).textContent="[ ] "+l;$(`s${i+1}`
 
 async function refreshCache(){
   try{
-    const r=await fetch(`${API}/cache`);const d=await r.json();
+    const d=await fetchJsonWithFallback(["/cache","/api/cache"]);
     const el=$("cache-panel");el.innerHTML="";
     if(!d.total){
       el.innerHTML='<div style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--text3)">Aucun modele en cache.</div>';
@@ -567,9 +588,9 @@ async function refreshCache(){
 
 async function clearCache(ticker){
   try{
-    const r=await fetch(`${API}/cache/clear`,{method:"POST",
+    const d=await fetchJsonWithFallback(["/cache/clear","/api/cache/clear"],{method:"POST",
       headers:{"Content-Type":"application/json"},body:JSON.stringify({ticker})});
-    const d=await r.json();alert(d.message);refreshCache();
+    alert(d.message);refreshCache();
   }catch(e){alert("Erreur: "+e.message)}
 }
 refreshCache();setInterval(refreshCache,120000);
@@ -581,10 +602,8 @@ async function run(){
   $("ov").classList.add("on");$("btn").disabled=true;
   rstS();animS();
   try{
-    const r=await fetch(`${API}/api/predict`,{method:"POST",
+    const d=await fetchJsonWithFallback(["/api/predict"],{method:"POST",
       headers:{"Content-Type":"application/json"},body:JSON.stringify({ticker:t})});
-    const d=await r.json();
-    if(!r.ok||d.error)throw new Error(d.error||"Erreur serveur");
     DATA=d;render(d);refreshCache();
   }catch(e){
     $("err").textContent="Erreur : "+e.message;$("err").style.display="block";
@@ -602,13 +621,11 @@ async function runTop10(){
   btn.disabled=true;
   panel.innerHTML=`<span style="color:var(--cyan)">Scan en cours... ${tickers.length?`analyse de ${tickers.length} tickers perso`:"analyse de l univers par defaut"}.</span>`;
   try{
-    const r=await fetch(`${API}/api/top10`,{
+    const d=await fetchJsonWithFallback(["/api/top10"],{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({tickers, strict_mode: strictMode})
     });
-    const d=await r.json();
-    if(!r.ok||d.error)throw new Error(d.error||"Erreur scan");
     renderTop10(d);
   }catch(e){
     panel.innerHTML=`<span style="color:var(--red)">Erreur: ${e.message}</span>`;

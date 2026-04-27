@@ -1,5 +1,5 @@
 """
-StockAI Pro v5.0 — Version Goldman Sachs Gratuite
+StockAI Pro v5.0 — Mayan Edition
 Nouvelles sources :
 - Options Flow (Put/Call ratio, Open Interest)
 - Insider Trading SEC EDGAR (Form 4)
@@ -1400,7 +1400,7 @@ def make_ensemble(mc,xgb_r,lstm_r,tech_score_100=50,volume_score=50,options_scor
     return out
 
 
-# ══ ANALYSE IA GOLDMAN SACHS ════════════════════════════════════════════════
+# ══ ANALYSE IA MAYAN EDITION ════════════════════════════════════════════════
 
 def groq_masterclass_gs(symbol, info, preds, sentiment, tech_signals,
                          market_ctx, fh_data, rows, volume_data,
@@ -1428,7 +1428,7 @@ def groq_masterclass_gs(symbol, info, preds, sentiment, tech_signals,
     current=info.get("currentPrice",0); target=info.get("targetMeanPrice")
     upside=(f"{round((target/current-1)*100,1):+.1f}%" if target and current else "N/A")
 
-    prompt=f"""Tu es un analyste senior Goldman Sachs. Redige une analyse MASTERCLASS ultra-complete en francais pour {symbol} ({info.get('shortName','')}).
+    prompt=f"""Tu es un analyste senior Mayan Edition. Redige une analyse MASTERCLASS ultra-complete en francais pour {symbol} ({info.get('shortName','')}).
 Utilise TOUTES les donnees. Sois precis, chiffre tout, analyse chaque signal.
 
 ━━━ DONNEES DE MARCHE ━━━
@@ -1504,7 +1504,7 @@ FORMAT MARKDOWN OBLIGATOIRE — sois exhaustif et precis :
 ## Fiabilite des Modeles (Backtest)
 ## Predictions Probabilistes par Horizon
 ## Catalyseurs Haussiers vs Risques Baissiers
-## Verdict Final Goldman Sachs (biais, conviction 1-10, cible de prix, strategie)"""
+## Verdict Final Mayan Edition (biais, conviction 1-10, cible de prix, strategie)"""
 
     try:
         r=requests.post("https://api.groq.com/openai/v1/chat/completions",
@@ -1981,7 +1981,7 @@ def predict():
             "targetMean":info.get("targetMeanPrice"),"shortPct":info.get("shortPct"),
         }
 
-        # Score global Goldman Sachs — 11 composantes
+        # Score global Mayan Edition — 11 composantes
         global_score=round((
             analyst_score                          * 0.20 +
             tech_sigs.get("score",50)              * 0.15 +
@@ -2069,8 +2069,13 @@ def health():
         "status":"ok","ml":ML_AVAILABLE,"lstm":LSTM_AVAILABLE,
         "groq":bool(GROQ_KEY),"finnhub":bool(FINNHUB_KEY),
         "trends":TRENDS_AVAILABLE,"cached":list(MODEL_CACHE.keys()),
-        "version":"5.0-goldman-sachs"
+        "version":"5.0-mayan-edition"
     })
+
+
+@app.route("/api/health")
+def api_health():
+    return health()
 
 
 @app.route("/api/top10", methods=["POST"])
@@ -2144,6 +2149,11 @@ def cache_status():
                     "cache_duration_h":CACHE_DURATION//3600})
 
 
+@app.route("/api/cache")
+def api_cache_status():
+    return cache_status()
+
+
 @app.route("/cache/clear", methods=["POST"])
 def clear_cache():
     body=request.get_json(force=True) if request.data else {}
@@ -2157,6 +2167,11 @@ def clear_cache():
         return jsonify({"message":"Cache global vide"})
     return jsonify({"message":f"{ticker} non trouve",
                     "available":list(MODEL_CACHE.keys())})
+
+
+@app.route("/api/cache/clear", methods=["POST"])
+def api_clear_cache():
+    return clear_cache()
 
 
 @app.route("/")
@@ -2175,7 +2190,7 @@ def index():
 @app.route("/api/info")
 def api_info():
     return jsonify({
-        "message":"StockAI Pro v5.0 Goldman Sachs Edition",
+        "message":"StockAI Pro v5.0 Mayan Edition",
         "lstm":LSTM_AVAILABLE,"ml":ML_AVAILABLE,
         "trends":TRENDS_AVAILABLE,
         "sources":["yfinance","finnhub","groq","reddit","google_trends",
