@@ -177,6 +177,10 @@ td:first-child{color:var(--text);font-weight:700}
 .obj-t{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
 .obj-li{font-family:'DM Mono',monospace;font-size:10px;color:var(--text2);padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03)}
 .obj-li:last-child{border-bottom:none}
+.radar-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:10px}
+.radar-item{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center}
+.radar-k{font-family:'DM Mono',monospace;font-size:8px;color:var(--text3);margin-bottom:4px}
+.radar-v{font-family:'Space Mono',monospace;font-size:12px;font-weight:700}
 .ni{padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
 .ni:last-child{border-bottom:none}
 .nh{font-size:12px;color:var(--text);margin-bottom:2px}
@@ -666,7 +670,7 @@ function render(d){
         global_score,fundamental_score,analyst_score,ml_reliability,
         social_score,reddit,trends,backtest,volume,
         options,insider,short_interest,sector_momentum,earnings_quality,
-        recommendation,profitability,solid_foundation,objective_analysis}=d;
+        recommendation,profitability,solid_foundation,objective_analysis,quality_radar}=d;
 
   $("sym").textContent=symbol;
   const resolved=d.query_original&&d.query_original!==symbol
@@ -678,7 +682,7 @@ function render(d){
   $("ts").textContent="Secteur: "+(info.industry||"--")+" | "+new Date(d.timestamp).toLocaleString("fr-FR");
   renderRecommendation(recommendation);
   renderProfitability(profitability,solid_foundation);
-  renderObjective(objective_analysis,solid_foundation);
+  renderObjective(objective_analysis,solid_foundation,quality_radar);
 
   const gs=global_score||50,gsColor=scoreColor(gs);
   const ring=$("global-ring"),circ=2*Math.PI*46;
@@ -807,15 +811,18 @@ function renderProfitability(p,solid){
   host.appendChild(box);
 }
 
-function renderObjective(obj,solid){
+function renderObjective(obj,solid,radar){
   const host=$("objective-panel");
   const strengths=obj?.strengths?.length?obj.strengths:["Aucune force majeure detectee"];
   const weaknesses=obj?.weaknesses?.length?obj.weaknesses:["Pas de faiblesse critique evidente"];
   const risks=obj?.risks?.length?obj.risks:["Risque principal non saillant"];
   const verdict=obj?.verdict_objectif||"equilibre";
   const vc=verdict==="favorable"?"var(--green)":verdict==="prudent"?"var(--red)":"var(--gold)";
+  const decision=radar?.label||"--";
+  const dc=radar?.decision==="investissable"?"var(--green)":"var(--red)";
   host.innerHTML=`<div style="margin-bottom:10px;font-family:'DM Mono',monospace;font-size:11px;color:${vc}">
-    Verdict objectif: <strong>${verdict.toUpperCase()}</strong> | Solidite fondamentale: ${solid?.score??50}/100 (${solid?.status||"--"})
+    Verdict objectif: <strong>${verdict.toUpperCase()}</strong> | Solidite fondamentale: ${solid?.score??50}/100 (${solid?.status||"--"})<br>
+    Radar qualite: <strong style="color:${dc}">${decision}</strong> (${radar?.passed??0}/5 criteres valides)
   </div>
   <div class="obj-grid">
     <div class="obj-box">
@@ -833,6 +840,13 @@ function renderObjective(obj,solid){
     <div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:9px;color:var(--text3)">
       ${obj?.note||""}
     </div>
+  </div>
+  <div class="radar-grid">
+    ${Object.entries(radar?.criteria||{}).map(([k,v])=>{
+      const th=(radar?.thresholds||{})[k]??50;
+      const ok=v>=th; const c=ok?"var(--green)":"var(--red)";
+      return `<div class="radar-item"><div class="radar-k">${k.replaceAll("_"," ")}</div><div class="radar-v" style="color:${c}">${v}</div></div>`;
+    }).join("")}
   </div>`;
 }
 
@@ -846,20 +860,27 @@ function renderTop10(d){
   const modeTxt=d.strict_mode?"Mode strict actif":"Mode strict inactif";
   const filtered=(d.filtered_out||[]).length;
   const head=`<div style="margin-bottom:8px;color:var(--text2)">Analyses retenues: ${d.analyzed}/${d.universe_size} | ${modeTxt} | Filtres: ${filtered} | ${new Date(d.timestamp).toLocaleString("fr-FR")}</div>`;
-  const table=['<table><thead><tr><th>#</th><th>Action</th><th>Prix</th><th>Potentiel</th><th>Solidite</th><th>Action</th><th>Resume</th></tr></thead><tbody>'];
+  const table=['<table><thead><tr><th>#</th><th>Action</th><th>Prix</th><th>Selection V2</th><th>Potentiel</th><th>Solidite</th><th>Radar</th><th>Action</th><th>Resume</th></tr></thead><tbody>'];
   rows.forEach((r,i)=>{
     const p=r.profitability||{};
     const score=p.score??50;
     const c=scoreColor(score);
     const sf=r.solid_foundation?.score??50;
     const sfc=scoreColor(sf);
+    const sel=r.selection_score??Math.round(score*0.65+sf*0.35);
+    const selc=scoreColor(sel);
+    const dec=r.quality_radar?.decision||"a_eviter";
+    const decLabel=dec==="investissable"?"INVESTISSABLE":"A EVITER";
+    const decColor=dec==="investissable"?"var(--green)":"var(--red)";
     const rec=r.recommendation?.quick_summary||"--";
     table.push(`<tr>
       <td>${i+1}</td>
       <td>${r.symbol}<br><span style="font-size:9px;color:var(--text3)">${r.shortName||""}</span></td>
       <td>$${fn(r.price)}</td>
+      <td style="color:${selc};font-weight:700">${sel}/100</td>
       <td style="color:${c};font-weight:700">${score}/100</td>
       <td style="color:${sfc};font-weight:700">${sf}/100</td>
+      <td style="color:${decColor};font-weight:700">${decLabel}</td>
       <td><span class="qb" style="background:${c}22;color:${c}">${p.action||"--"}</span></td>
       <td style="font-size:9px;color:var(--text3)">${rec}</td>
     </tr>`);

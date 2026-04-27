@@ -751,6 +751,8 @@ def run_backtest(ticker, rows, prices):
                 "periods_tested":0,"note":"Donnees insuffisantes"}
     train_cutoff=len(prices)-90
     correct_24h=0; correct_7d=0; total_24h=0; total_7d=0
+    pred_up_24h=0; actual_up_24h=0
+    pred_up_7d=0; actual_up_7d=0
     mae_24h=[]; mae_7d=[]
     for i in range(train_cutoff,len(prices)-7,5):
         train_prices=prices[:i]
@@ -759,21 +761,43 @@ def run_backtest(ticker, rows, prices):
         try:
             if i+1<len(prices):
                 pred=S0*np.exp(mu); actual=prices[i+1]
-                if (pred>S0)==(actual>S0): correct_24h+=1
+                pred_up=(pred>S0); actual_up=(actual>S0)
+                if pred_up==actual_up: correct_24h+=1
+                pred_up_24h += int(pred_up); actual_up_24h += int(actual_up)
                 total_24h+=1; mae_24h.append(abs(pred-actual)/actual*100)
             if i+5<len(prices):
                 pred=S0*np.exp(mu*5); actual=prices[i+5]
-                if (pred>S0)==(actual>S0): correct_7d+=1
+                pred_up=(pred>S0); actual_up=(actual>S0)
+                if pred_up==actual_up: correct_7d+=1
+                pred_up_7d += int(pred_up); actual_up_7d += int(actual_up)
                 total_7d+=1; mae_7d.append(abs(pred-actual)/actual*100)
         except: continue
     acc_24h=round(correct_24h/total_24h*100,1) if total_24h>0 else None
     acc_7d =round(correct_7d/total_7d*100,1)   if total_7d>0  else None
+    # Balanced accuracy rudimentaire pour eviter un score gonfle en marche unidirectionnel.
+    bal_24h = None
+    bal_7d = None
+    if total_24h > 0:
+        up_rate = actual_up_24h / total_24h
+        pred_rate = pred_up_24h / total_24h
+        bal_24h = round(100 - abs(pred_rate - up_rate) * 100, 1)
+    if total_7d > 0:
+        up_rate = actual_up_7d / total_7d
+        pred_rate = pred_up_7d / total_7d
+        bal_7d = round(100 - abs(pred_rate - up_rate) * 100, 1)
     avg_mae=round(float(np.mean(mae_24h)),2) if mae_24h else None
     scores=[]
     if acc_24h: scores.append(normalize_score(acc_24h,40,70))
     if acc_7d:  scores.append(normalize_score(acc_7d,40,70))
+    if bal_24h: scores.append(normalize_score(bal_24h,55,95))
+    if bal_7d:  scores.append(normalize_score(bal_7d,55,95))
     if avg_mae: scores.append(normalize_score(avg_mae,0,10,inverse=True))
+    stability = None
+    if acc_24h is not None and acc_7d is not None:
+        stability = round(max(0, 100 - abs(acc_24h - acc_7d) * 2), 1)
+        scores.append(normalize_score(stability, 40, 95))
     return {"accuracy_24h":acc_24h,"accuracy_7d":acc_7d,"mae_24h_pct":avg_mae,
+            "balanced_24h":bal_24h,"balanced_7d":bal_7d,"stability":stability,
             "backtest_score":round(sum(scores)/len(scores),1) if scores else 50,
             "periods_tested":total_24h,
             "note":f"Sur {total_24h} periodes : direction correcte {acc_24h}% a 24h, {acc_7d}% a 7j"}
@@ -1681,6 +1705,88 @@ def build_profitability_signal(recommendation, global_score, ml_reliability, mar
     }
 
 
+def compute_horizon_consistency(preds_adj):
+    ens = preds_adj.get("ensemble", {})
+    ordered = ["1h", "6h", "24h", "7d", "1m", "6m"]
+    values = []
+    for h in ordered:
+        p = ens.get(h, {})
+        if p and p.get("pct_change") is not None:
+            values.append(float(p.get("pct_change", 0)))
+    if len(values) < 3:
+        return {"score": 50, "sign_flips": None, "volatility": None}
+    sign_flips = 0
+    for i in range(1, len(values)):
+        if values[i] == 0 or values[i-1] == 0:
+            continue
+        if (values[i] > 0) != (values[i-1] > 0):
+            sign_flips += 1
+    vol = float(np.std(values))
+    score = 100 - sign_flips * 12 - min(35, vol * 6)
+    return {
+        "score": round(max(5, min(95, score)), 1),
+        "sign_flips": sign_flips,
+        "volatility": round(vol, 3),
+    }
+
+
+def calibrate_global_score(base_global_score, recommendation, solid_foundation, backtest, horizon_consistency):
+    score = float(base_global_score)
+    green = recommendation.get("traffic_lights", {}).values()
+    green_count = sum(1 for x in green if x == "vert")
+    red_count = sum(1 for x in green if x == "rouge")
+    score += green_count * 1.8
+    score -= red_count * 2.2
+    score += (solid_foundation.get("score", 50) - 50) * 0.10
+    score += (backtest.get("backtest_score", 50) - 50) * 0.08
+    score += (horizon_consistency.get("score", 50) - 50) * 0.10
+    return round(max(0, min(100, score)), 1)
+
+
+def compute_selection_score(global_score, profitability, solid_foundation, objective_analysis):
+    verdict = objective_analysis.get("verdict_objectif", "equilibre")
+    verdict_bonus = 4 if verdict == "favorable" else -4 if verdict == "prudent" else 0
+    score = (
+        global_score * 0.30 +
+        profitability.get("score", 50) * 0.40 +
+        solid_foundation.get("score", 50) * 0.30 +
+        verdict_bonus
+    )
+    return round(max(0, min(100, score)), 1)
+
+
+def compute_quality_radar(global_score, profitability, solid_foundation, backtest_score, horizon_consistency):
+    criteria = {
+        "solidite_fondamentale": round(float(solid_foundation.get("score", 50)), 1),
+        "potentiel_rentabilite": round(float(profitability.get("score", 50)), 1),
+        "coherence_horizons": round(float(horizon_consistency.get("score", 50)), 1),
+        "fiabilite_modele": round(float(backtest_score if backtest_score is not None else 50), 1),
+        "qualite_globale": round(float(global_score), 1),
+    }
+    thresholds = {
+        "solidite_fondamentale": 58,
+        "potentiel_rentabilite": 60,
+        "coherence_horizons": 52,
+        "fiabilite_modele": 50,
+        "qualite_globale": 60,
+    }
+    failures = [k for k, v in criteria.items() if v < thresholds[k]]
+    passed = len(criteria) - len(failures)
+    avg = round(sum(criteria.values()) / len(criteria), 1)
+    investable = passed >= 4 and len(failures) <= 1 and avg >= 62
+    decision = "investissable" if investable else "a_eviter"
+    label = "Investissable" if investable else "A eviter / surveiller"
+    return {
+        "criteria": criteria,
+        "thresholds": thresholds,
+        "passed": passed,
+        "failed": failures,
+        "average_score": avg,
+        "decision": decision,
+        "label": label,
+    }
+
+
 def compute_solid_foundation_score(info, fund_score, market_ctx):
     checks = []
     pe = info.get("peRatio")
@@ -1814,7 +1920,7 @@ def quick_profitability_scan(symbol, market_ctx):
     mc_r = monte_carlo(prices, mc_h, n=2500)
     preds_adj = {"ensemble": mc_r}
 
-    global_score = round((
+    base_global_score = round((
         tech_sigs.get("score", 50) * 0.40 +
         fund_score * 0.25 +
         market_ctx.get("macro_score", 50) * 0.15 +
@@ -1824,10 +1930,14 @@ def quick_profitability_scan(symbol, market_ctx):
 
     recommendation = build_horizon_recommendation(
         preds_adj,
-        global_score,
+        base_global_score,
         tech_sigs.get("score", 50),
         fund_score,
         50,  # sentiment neutre dans le scan rapide
+    )
+    horizon_consistency = compute_horizon_consistency(preds_adj)
+    global_score = calibrate_global_score(
+        base_global_score, recommendation, {"score": 50}, {"backtest_score": 50}, horizon_consistency
     )
     profitability = build_profitability_signal(
         recommendation,
@@ -1839,6 +1949,14 @@ def quick_profitability_scan(symbol, market_ctx):
     )
     solid_foundation = compute_solid_foundation_score(info, fund_score, market_ctx)
     objective = build_objective_analysis(info, recommendation, profitability, solid_foundation, market_ctx)
+    selection_score = compute_selection_score(global_score, profitability, solid_foundation, objective)
+    quality_radar = compute_quality_radar(
+        global_score,
+        profitability,
+        solid_foundation,
+        50,
+        horizon_consistency,
+    )
 
     return {
         "symbol": symbol,
@@ -1846,6 +1964,10 @@ def quick_profitability_scan(symbol, market_ctx):
         "price": info.get("currentPrice"),
         "dayChange": info.get("dayChange"),
         "global_score": global_score,
+        "base_global_score": base_global_score,
+        "horizon_consistency": horizon_consistency,
+        "selection_score": selection_score,
+        "quality_radar": quality_radar,
         "profitability": profitability,
         "solid_foundation": solid_foundation,
         "objective_analysis": objective,
@@ -1982,7 +2104,7 @@ def predict():
         }
 
         # Score global Mayan Edition — 11 composantes
-        global_score=round((
+        base_global_score=round((
             analyst_score                          * 0.20 +
             tech_sigs.get("score",50)              * 0.15 +
             fund_score                             * 0.12 +
@@ -1998,10 +2120,15 @@ def predict():
 
         recommendation = build_horizon_recommendation(
             preds_adj,
-            global_score,
+            base_global_score,
             tech_sigs.get("score", 50),
             fund_score,
             sentiment.get("score", 50),
+        )
+        solid_foundation = compute_solid_foundation_score(info, fund_score, market_ctx)
+        horizon_consistency = compute_horizon_consistency(preds_adj)
+        global_score = calibrate_global_score(
+            base_global_score, recommendation, solid_foundation, backtest, horizon_consistency
         )
         profitability = build_profitability_signal(
             recommendation,
@@ -2011,9 +2138,18 @@ def predict():
             options_data,
             short_data,
         )
-        solid_foundation = compute_solid_foundation_score(info, fund_score, market_ctx)
         objective_analysis = build_objective_analysis(
             info, recommendation, profitability, solid_foundation, market_ctx
+        )
+        selection_score = compute_selection_score(
+            global_score, profitability, solid_foundation, objective_analysis
+        )
+        quality_radar = compute_quality_radar(
+            global_score,
+            profitability,
+            solid_foundation,
+            backtest.get("backtest_score", 50),
+            horizon_consistency,
         )
 
         return jsonify({
@@ -2047,7 +2183,11 @@ def predict():
             "fundamental_score": fund_score,
             "ml_reliability":  ml_reliability,
             "social_score":    social_score,
+            "base_global_score": base_global_score,
             "global_score":    global_score,
+            "horizon_consistency": horizon_consistency,
+            "selection_score": selection_score,
+            "quality_radar": quality_radar,
             "recommendation":  recommendation,
             "profitability":   profitability,
             "solid_foundation": solid_foundation,
@@ -2115,10 +2255,7 @@ def top10():
                 filtered_out.append({"symbol": item.get("symbol"), "reason": reason})
         results = kept
 
-    ranked = sorted(results, key=lambda x: (
-        x.get("profitability", {}).get("score", 0) * 0.65 +
-        x.get("solid_foundation", {}).get("score", 0) * 0.35
-    ), reverse=True)
+    ranked = sorted(results, key=lambda x: x.get("selection_score", 0), reverse=True)
     top_10 = ranked[:10]
 
     return jsonify({
