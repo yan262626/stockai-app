@@ -1,0 +1,15 @@
+flask
+flask-cors
+requests
+numpy
+pandas
+yfinance
+scikit-learn
+xgboost
+tensorflow-cpu
+gunicorn
+python-dotenv
+joblib
+pytrends
+beautifulsoup4
+lxml
